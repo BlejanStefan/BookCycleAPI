@@ -13,10 +13,17 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
+            $table->string('username')->unique(); // Nombre de usuario para la app
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
+
+            // Relación con la ubicación (la crearemos después, por eso es nullable ahora)
+            $table->foreignId('municipality_id')->nullable()->constrained();
+
+            $table->decimal('rating', 3, 2)->default(0.00); // Ej: 4.50
+            $table->string('avatar')->nullable(); // Ruta de la foto de perfil
+
             $table->rememberToken();
             $table->timestamps();
         });
