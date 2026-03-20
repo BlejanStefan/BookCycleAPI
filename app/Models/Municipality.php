@@ -10,7 +10,7 @@ class Municipality extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'province_id'];
+    protected $fillable = ['id','name', 'province_id'];
 
     // Relación hacia su provincia
     public function province(): BelongsTo

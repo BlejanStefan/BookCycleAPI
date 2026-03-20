@@ -2,51 +2,65 @@
 
 namespace App\Console\Commands;
 
-use Illuminate\Console\Attributes\Description;
-use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
-use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use App\Models\Community;
 use App\Models\Province;
 use App\Models\Municipality;
-use App\Models\Community;
-#[Signature('app:import-geography')]
-#[Description('Command description')]
+
 class ImportGeography extends Command
 {
     protected $signature = 'import:geography';
-    protected $description = 'Importa provincias y municipios desde la API del INE';
-    /**
-     * Execute the console command.
-     * @throws ConnectionException
-     */
-    public function handle(): void
+    protected $description = 'Importa la geografía española con IDs únicos para evitar duplicados';
+
+    public function handle()
     {
-        $this->info('Conectando con GeoAPI para obtener Comunidades...');
+        $apikey = "6cecaa7b077822e004100ee146da8db7be7686b024c8a1573ef78af6e6ffe754";
 
-        // Tu URL con la API Key
-        $url = 'https://apiv1.geoapi.es/comunidades?type=JSON&key=6cecaa7b077822e004100ee146da8db7be7686b024c8a1573ef78af6e6ffe754';
+        $this->info('Iniciando limpieza e importación... (Esto evitará los 24.000 registros)');
 
-        $response = Http::get($url);
+        $resCom = Http::get("https://apiv1.geoapi.es/comunidades?type=JSON&key={$apikey}");
+        if (!$resCom->successful()) return $this->error('Error API Comunidades');
 
-        if ($response->successful()) {
-            // La API devuelve un objeto con una propiedad "data" que es el array
-            $comunidades = $response->json('data');
+        $comunidades = $resCom->json('data');
 
-            $this->info('Importando comunidades autónomas...');
+        foreach ($comunidades as $c) {
+            $comunidad = Community::updateOrCreate(
+                ['id' => (int)$c['CCOM']],
+                ['name' => $c['COM']]
+            );
+            $this->info("➤ {$comunidad->name}");
 
-            $this->withProgressBar($comunidades, function ($item) {
-                // Estructura de la API: {"CCOM": "01", "COM": "Andalucía"}
-                Community::updateOrCreate(
-                    ['id' => (int)$item['CCOM']], // Usamos el código oficial como ID
-                    ['name' => $item['COM']]
-                );
-            });
+            $resProv = Http::get("https://apiv1.geoapi.es/provincias?CCOM={$c['CCOM']}&type=JSON&key={$apikey}");
 
-            $this->newLine();
-            $this->info('¡Comunidades importadas correctamente!');
-        } else {
-            $this->error('Error al conectar con GeoAPI. Revisa la Key o la conexión.');
+            if ($resProv->successful()) {
+                foreach ($resProv->json('data') as $p) {
+                    $provincia = Province::updateOrCreate(
+                        ['id' => (int)$p['CPRO']],
+                        ['name' => $p['PRO'], 'community_id' => $comunidad->id]
+                    );
+
+                    $cpro_api = str_pad($p['CPRO'], 2, '0', STR_PAD_LEFT);
+                    $resMun = Http::get("https://apiv1.geoapi.es/municipios?CPRO={$cpro_api}&type=JSON&key={$apikey}");
+
+                    if ($resMun->successful()) {
+                        foreach ($resMun->json('data') as $m) {
+                            // GENERAMOS EL ID ÚNICO (CPRO + CMUM)
+                            // Esto evita que se dupliquen si el script se relanza
+                            $idReal = (int)($m['CPRO'] . $m['CMUM']);
+
+                            Municipality::updateOrCreate(
+                                ['id' => $idReal],
+                                [
+                                    'name' => $m['DMUN50'],
+                                    'province_id' => $provincia->id
+                                ]
+                            );
+                        }
+                    }
+                }
+            }
         }
+        $this->info('¡Hecho! Ahora deberías tener exactamente 8.131 municipios.');
     }
 }

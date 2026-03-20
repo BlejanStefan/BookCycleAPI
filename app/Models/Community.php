@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Community extends Model
 {
     use HasFactory;
-    protected $fillable = ['name'];
+    protected $fillable = ['id','name'];
     //
     public function provinces() : HasMany
     {

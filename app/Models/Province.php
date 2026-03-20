@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Province extends Model
 {
     use HasFactory;
-    protected $fillable = ['name', 'community_id'];
+    protected $fillable = ['id','name', 'community_id'];
 
 
     // Relación hacia arriba (Padre)
