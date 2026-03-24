@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Book extends Model
 {
@@ -23,8 +24,7 @@ class Book extends Model
         return $this->belongsToMany(Publisher::class, 'book_publisher');
     }
 
-    // Relación por si la necesitas luego (según tu ER)
-    public function listings()
+    public function listings(): HasMany
     {
         return $this->hasMany(Listing::class);
     }

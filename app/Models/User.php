@@ -10,6 +10,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
 
 class User extends Authenticatable
 {
@@ -46,7 +49,7 @@ class User extends Authenticatable
     /**
      * Un usuario pertenece a un municipio.
      */
-    public function municipality()
+    public function municipality(): BelongsTo
     {
         return $this->belongsTo(Municipality::class);
     }
@@ -54,7 +57,7 @@ class User extends Authenticatable
     /**
      * Un usuario puede tener muchos anuncios (Listings).
      */
-    public function listings()
+    public function listings(): User|HasMany
     {
         return $this->hasMany(Listing::class);
     }

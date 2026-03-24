@@ -4,13 +4,16 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+
 
 
 class Conversation extends Model
 {
     protected $fillable = ['listing_id', 'buyer_id', 'seller_id'];
 
-    public function messages() {
+    public function messages() : HasMany{
         return $this->hasMany(Message::class);
     }
 
