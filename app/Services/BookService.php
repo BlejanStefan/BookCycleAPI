@@ -1,7 +1,10 @@
 <?php
+
 namespace App\Services;
 
+use App\Models\Author;
 use App\Models\Book;
+use App\Models\Publisher;
 use Illuminate\Support\Facades\Http;
 
 class BookService
@@ -24,12 +27,42 @@ class BookService
         if ($response->successful() && isset($response->json()["ISBN:{$isbn}"])) {
             $data = $response->json()["ISBN:{$isbn}"];
 
-            return Book::create([
-                'isbn13'         => $isbn,
+            $book = Book::create([
+                'isbn13' => $isbn,
                 'ol_edition_key' => $this->extractEditionKey($data['url'] ?? ''),
-                'title'          => $data['title'] ?? 'Título desconocido',
-                'year'           => $this->extractYear($data['publish_date'] ?? null),
+                'title' => $data['title'] ?? 'Título desconocido',
+                'year' => $this->extractYear($data['publish_date'] ?? null),
             ]);
+            // 4. Procesar Autores
+            if (isset($data['authors'])) {
+                $authorIds = [];
+                foreach ($data['authors'] as $authorData) {
+                    $olKey = $this->extractEditionKey($authorData['url'] ?? '');
+
+                    // Buscamos o creamos el autor por su clave de Open Library
+                    $author = Author::updateOrCreate(
+                        ['ol_author_key' => $olKey],
+                        ['name' => $authorData['name']]
+                    );
+
+                    $authorIds[] = $author->id;
+                }
+                $book->authors()->syncWithoutDetaching($authorIds);
+            }
+            // 5. Procesar Publishers (Editoriales)
+            if (isset($data['publishers'])) {
+                $publisherIds = [];
+                foreach ($data['publishers'] as $publisherName) {
+                    // En Open Library los publishers vienen como texto
+                    $publisher = Publisher::updateOrCreate(
+                        ['name' => $publisherName['name'] ?? $publisherName]
+                    );
+                    $publisherIds[] = $publisher->id;
+                }
+                $book->publishers()->syncWithoutDetaching($publisherIds);
+            }
+
+            return $book->load(['authors', 'publishers']);
         }
 
         return null; // No encontrado
@@ -38,7 +71,7 @@ class BookService
     private function extractEditionKey(string $url): ?string
     {
         // Busca el patrón OLxxxxM en la URL
-        if (preg_match('/(OL\d+M)/', $url, $matches)) {
+        if (preg_match('/(OL\d+[AM])/', $url, $matches)) {
             return $matches[1];
         }
         return null;
@@ -49,7 +82,7 @@ class BookService
         if (!$dateString) return null;
         // Intenta sacar los últimos 4 dígitos (el año)
         if (preg_match('/\d{4}/', $dateString, $matches)) {
-            return (int) $matches[0];
+            return (int)$matches[0];
         }
         return null;
     }
