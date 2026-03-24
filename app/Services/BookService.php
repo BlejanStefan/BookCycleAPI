@@ -86,4 +86,9 @@ class BookService
         }
         return null;
     }
+
+    // ./vendor/bin/sail artisan thinker
+    //$service = new \App\Services\BookService();
+    //$libro = $service->getByIsbn('9788445073735');
+
 }
