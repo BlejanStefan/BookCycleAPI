@@ -18,50 +18,56 @@ class AuthController extends Controller
      */
     public function register(Request $request)
     {
-        // 1. Validamos todos los campos del formulario
-        $validator = Validator::make($request->all(), [
-            'username'        => 'required|string|max:255|unique:users,username',
-            'email'           => 'required|string|email|max:255|unique:users,email',
-            'password'        => 'required|string|min:6',
+        // 1. Validar los datos de entrada tal y como los tenías
+        $request->validate([
+            'username' => 'required|string|max:255|unique:users',
+            'email' => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|min:6',
             'municipality_id' => 'required|exists:municipalities,id',
-            'avatar'          => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Max 2MB
+            'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        // 2. Gestión de la foto de Avatar
-        $avatarUrl = null;
-        if ($request->hasFile('avatar')) {
-            // Guarda la foto en: storage/app/public/avatars/
-            $path = $request->file('avatar')->store('avatars', 'public');
-
-            // Genera la URL pública completa dinámica basada en tu APP_URL del .env
-            $avatarUrl = asset('storage/' . $path);
-        }
-
-        // 3. Crear el registro en la tabla USERS
-        $user = User::create([
-            'username'        => $request->username,
-            'email'           => $request->email,
-            'password'        => Hash::make($request->password),
+        // 2. Instanciar el usuario sin guardarlo aún (para poder usar sus propiedades)
+        $user = new User([
+            'username' => $request->username,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
             'municipality_id' => $request->municipality_id,
-            'avatar'          => $avatarUrl,
-            'rating'          => 5.0,
         ]);
 
-        // 4. DELEGACIÓN AUTOMÁTICA: Generamos token y respuesta usando el formato unificado
-        $token = $user->createToken('mobile_auth_token')->plainTextToken;
+        // 3. Gestión del nuevo Avatar con nombre formal (Igual que en tu Update)
+        if ($request->hasFile('avatar')) {
+            // Conseguir el archivo subido
+            $file = $request->file('avatar');
+
+            // Limpiar el username (eliminar espacios, acentos y pasarlo a minúsculas)
+            $safeUsername = Str::slug($request->username ?? 'avatar');
+
+            // Obtener el timestamp actual
+            $timestamp = time();
+
+            // Obtener la extensión original del archivo
+            $extension = $file->getClientOriginalExtension();
+
+            // Construir el nombre formal completo
+            $fileName = "{$safeUsername}-{$timestamp}.{$extension}";
+
+            // Guardar el archivo con el método storeAs
+            $path = $file->storeAs('avatars', $fileName, 'public');
+
+            // Asignar la URL completa al modelo del usuario antes de guardar
+            $user->avatar = url('storage/' . $path);
+        }
+
+        // 4. Guardar definitivamente el usuario en la Base de Datos
+        $user->save();
+
+        // 5. Generar el token de Sanctum y retornar la respuesta
+        $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'success' => true,
-            'message' => 'Usuario registrado e inicio de sesión exitoso.',
-            'user'    => $this->formatUserResponse($user), // 👈 Mismos datos que el login
-            'token'   => $token
+            'user'  => $this->formatUserResponse($user),
+            'token' => $token,
         ], 201);
     }
 
@@ -131,6 +137,7 @@ class AuthController extends Controller
             'email'    => $user->email,
             'avatar'   => $user->avatar, // 📸 Destino resuelto para tu componente de React Native
             'rating'   => $user->rating,
+            'municipality_id' => $user->municipality_id,
         ];
     }
 

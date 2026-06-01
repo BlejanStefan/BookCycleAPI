@@ -17,7 +17,7 @@ class BookService
         // 2. Buscar si ya existe en nuestra DB (referencia isbn13 según ER)
         $book = Book::where('isbn13', $isbn)->first();
         if ($book) {
-            return $book;
+            return $book->load(['authors', 'publishers']);
         }
 
         // 3. Consultar la API de Open Library
