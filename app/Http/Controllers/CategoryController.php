@@ -2,13 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class CategoryController extends Controller
 {
     /**
-     * Obtiene todas las categorías disponibles para los libros.
+     * Obtiene todas las categorías disponibles para clasificar los libros.
+     * @return JsonResponse
      */
     public function index()
     {

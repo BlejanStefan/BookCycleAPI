@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -14,11 +15,13 @@ use Illuminate\Support\Str;
 class AuthController extends Controller
 {
     /**
-     * Registra un nuevo usuario y le inicia sesión automáticamente.
+     * Registra un nuevo usuario en la plataforma, valida sus credenciales,
+     * procesa su avatar y genera un token de autenticación.
+     * @param Request $request
+     * @return JsonResponse
      */
     public function register(Request $request)
     {
-        // 1. Validar los datos de entrada tal y como los tenías
         $request->validate([
             'username' => 'required|string|max:255|unique:users',
             'email' => 'required|string|email|max:255|unique:users',
@@ -27,7 +30,6 @@ class AuthController extends Controller
             'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
-        // 2. Instanciar el usuario sin guardarlo aún (para poder usar sus propiedades)
         $user = new User([
             'username' => $request->username,
             'email' => $request->email,
@@ -35,34 +37,24 @@ class AuthController extends Controller
             'municipality_id' => $request->municipality_id,
         ]);
 
-        // 3. Gestión del nuevo Avatar con nombre formal (Igual que en tu Update)
         if ($request->hasFile('avatar')) {
-            // Conseguir el archivo subido
             $file = $request->file('avatar');
 
-            // Limpiar el username (eliminar espacios, acentos y pasarlo a minúsculas)
             $safeUsername = Str::slug($request->username ?? 'avatar');
 
-            // Obtener el timestamp actual
             $timestamp = time();
 
-            // Obtener la extensión original del archivo
             $extension = $file->getClientOriginalExtension();
 
-            // Construir el nombre formal completo
             $fileName = "{$safeUsername}-{$timestamp}.{$extension}";
 
-            // Guardar el archivo con el método storeAs
             $path = $file->storeAs('avatars', $fileName, 'public');
 
-            // Asignar la URL completa al modelo del usuario antes de guardar
             $user->avatar = url('storage/' . $path);
         }
 
-        // 4. Guardar definitivamente el usuario en la Base de Datos
         $user->save();
 
-        // 5. Generar el token de Sanctum y retornar la respuesta
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -72,11 +64,13 @@ class AuthController extends Controller
     }
 
     /**
-     * Inicio de sesión tradicional.
+     * Valida las credenciales del usuario, autentica la sesión y genera
+     * un token de acceso para la aplicación móvil.
+     * @param Request $request
+     * @return JsonResponse
      */
     public function login(Request $request)
     {
-        // 1. Validar los datos de entrada
         $validator = Validator::make($request->all(), [
             'email' => 'required|email',
             'password' => 'required',
@@ -89,10 +83,8 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // 2. Buscar al usuario por email
         $user = User::where('email', $request->email)->first();
 
-        // 3. Verificar si el usuario existe y la contraseña es correcta
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
@@ -100,20 +92,19 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // 4. Crear el token de Sanctum
         $token = $user->createToken('mobile_auth_token')->plainTextToken;
 
-        // 5. Responder unificando el formato
         return response()->json([
             'success' => true,
             'message' => '¡Inicio de sesión exitoso!',
-            'user'    => $this->formatUserResponse($user), // 👈 ¡Ahora sí viaja el avatar aquí!
+            'user'    => $this->formatUserResponse($user),
             'token'   => $token
         ], 200);
     }
 
     /**
-     * Cierra la sesión revocando el token actual.
+     * Cierra la sesión del usuario autenticado eliminando el token de acceso actual.
+     * @return JsonResponse
      */
     public function logout(Request $request)
     {
@@ -126,8 +117,9 @@ class AuthController extends Controller
     }
 
     /**
-     * 🛠️ Método privado helper para estructurar el perfil del usuario.
-     * Así garantizas que cualquier cambio en los campos afecte a Login y Register por igual.
+     * Formatea los datos del usuario para la respuesta JSON.
+     * @param User $user El objeto de modelo del usuario.
+     * @return array La estructura de datos formateada para el cliente.
      */
     private function formatUserResponse(User $user)
     {
@@ -135,23 +127,27 @@ class AuthController extends Controller
             'id'       => $user->id,
             'username' => $user->username,
             'email'    => $user->email,
-            'avatar'   => $user->avatar, // 📸 Destino resuelto para tu componente de React Native
+            'avatar'   => $user->avatar,
             'rating'   => $user->rating,
             'municipality_id' => $user->municipality_id,
         ];
     }
-
+    /**
+     * Actualiza el perfil del usuario autenticado, permitiendo modificar
+     * información personal, cambiar la contraseña y reemplazar el avatar.
+     * * @param Request $request
+     * @return JsonResponse
+     */
     public function updateProfile(Request $request)
     {
-        $user = $request->user(); // Obtenemos el usuario autenticado por el Token
+        $user = $request->user();
 
-        // 1. Validar dinámicamente los datos de entrada
         $validator = Validator::make($request->all(), [
             'username'        => 'nullable|string|max:255|unique:users,username,' . $user->id,
             'email'           => 'nullable|string|email|max:255|unique:users,email,' . $user->id,
             'municipality_id' => 'nullable|exists:municipalities,id',
             'avatar'          => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-            'old_password'    => 'required_with:new_password', // Si hay nueva, la antigua es obligatoria
+            'old_password'    => 'required_with:new_password',
             'new_password'    => 'nullable|string|min:6',
         ]);
 
@@ -162,7 +158,6 @@ class AuthController extends Controller
             ], 422);
         }
 
-        // 2. Actualizar campos básicos si se han enviado
         if ($request->filled('username')) {
             $user->username = $request->username;
         }
@@ -173,7 +168,6 @@ class AuthController extends Controller
             $user->municipality_id = $request->municipality_id;
         }
 
-        // 3. Verificar y actualizar contraseña si se solicita
         if ($request->filled('new_password')) {
             if (!Hash::check($request->old_password, $user->password)) {
                 return response()->json([
@@ -184,39 +178,27 @@ class AuthController extends Controller
             $user->password = Hash::make($request->new_password);
         }
 
-        // 4. Gestión del nuevo Avatar (y eliminación del antiguo si existía)
         if ($request->hasFile('avatar')) {
-            // 1. Conseguir el archivo subido
             $file = $request->file('avatar');
 
-            // 2. Limpiar el username (eliminar espacios, acentos y pasarlo a minúsculas)
-            // Ejemplo: "Loki 123" se convierte en "loki-123"
             $safeUsername = Str::slug($user->username ?? 'avatar');
 
-            // 3. Obtener el timestamp actual (ejemplo: 1716915600)
             $timestamp = time();
 
-            // 4. Obtener la extensión original del archivo (png, jpg, webp, etc.)
             $extension = $file->getClientOriginalExtension();
 
-            // 5. Construir el nombre formal: loki-123-1716915600.png
             $fileName = "{$safeUsername}-{$timestamp}.{$extension}";
 
-            // 6. [Opcional] Borrar el avatar antiguo para no acumular basura en el servidor
             if ($user->avatar) {
-                // Extrae el nombre del archivo de la URL guardada si es necesario
                 $oldPath = str_replace(url('storage/'), '', $user->avatar);
                 Storage::disk('public')->delete($oldPath);
             }
 
-            // 7. Guardar el archivo en la carpeta 'avatars' dentro del disco público con el nuevo nombre
             $path = $file->storeAs('avatars', $fileName, 'public');
 
-            // 8. Actualizar la URL completa del avatar en el objeto del usuario
             $user->avatar = url('storage/' . $path);
         }
 
-        // 5. Guardar los cambios en la base de datos
         $user->save();
 
         return response()->json([

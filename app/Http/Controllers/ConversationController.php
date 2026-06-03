@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -9,14 +10,14 @@ use Carbon\Carbon;
 class ConversationController extends Controller
 {
     /**
-     * GET /api/conversations
-     * Carga el listado de la bandeja de entrada del usuario autenticado
+     * Obtiene todas las conversaciones del usuario autenticado, incluyendo los datos
+     * del otro participante, el anuncio asociado y el último mensaje enviado.
+     * @return JsonResponse
      */
     public function index()
     {
         $userId = auth()->id();
 
-        // Buscamos las conversaciones donde el usuario es comprador o vendedor
         $conversations = DB::table('conversations')
             ->join('listings', 'conversations.listing_id', '=', 'listings.id')
             ->join('books', 'listings.book_id', '=', 'books.id')
@@ -32,7 +33,6 @@ class ConversationController extends Controller
             ->get();
 
         $formatted = $conversations->map(function ($chat) use ($userId) {
-            // Identificar al otro participante
             $otherUserId = ($chat->buyer_id == $userId) ? $chat->seller_id : $chat->buyer_id;
 
             $otherUser = DB::table('users')
@@ -40,7 +40,6 @@ class ConversationController extends Controller
                 ->select('id', 'username')
                 ->first();
 
-            // Buscar el último mensaje de esta conversación
             $lastMessage = DB::table('messages')
                 ->where('conversation_id', $chat->id)
                 ->orderBy('id', 'desc')
@@ -72,8 +71,10 @@ class ConversationController extends Controller
     }
 
     /**
-     * GET /api/conversations/{id}
-     * Entrar a una conversación específica y ver sus mensajes
+     * Obtiene el detalle de una conversación específica, incluyendo los datos
+     * del anuncio relacionado y el historial completo de mensajes.
+     * @param  int $id El ID único de la conversación.
+     * @return JsonResponse
      */
     public function show($id)
     {
@@ -85,19 +86,16 @@ class ConversationController extends Controller
             return response()->json(['success' => false, 'message' => 'Conversación no encontrada.'], 404);
         }
 
-        // Verificar que pertenece al chat
         if ($conversation->buyer_id != $userId && $conversation->seller_id != $userId) {
             return response()->json(['success' => false, 'message' => 'Acceso denegado.'], 403);
         }
 
-        // Obtener la información del libro/anuncio para la cabecera
         $listing = DB::table('listings')
             ->join('books', 'listings.book_id', '=', 'books.id')
             ->select('listings.id', 'books.title as book_title', 'listings.price', 'listings.condition')
             ->where('listings.id', $conversation->listing_id)
             ->first();
 
-        // Obtener todos los mensajes en orden cronológico
         $messages = DB::table('messages')
             ->where('conversation_id', $id)
             ->orderBy('id', 'asc')
@@ -108,7 +106,7 @@ class ConversationController extends Controller
             'success' => true,
             'data' => [
                 'id' => (int)$id,
-                'current_user_id' => $userId, // Importante para alinear las burbujas a derecha/izquierda
+                'current_user_id' => $userId,
                 'listing' => $listing,
                 'messages' => $messages
             ]
@@ -116,8 +114,10 @@ class ConversationController extends Controller
     }
 
     /**
-     * POST /api/conversations/{id}/messages
-     * Almacenar y responder con un nuevo mensaje enviado
+     * Envía un nuevo mensaje dentro de una conversación existente, validando
+     * que el usuario remitente sea parte de dicha conversación.
+     * @param  int $id El ID de la conversación donde se enviará el mensaje.
+     * @return JsonResponse
      */
     public function storeMessage(Request $request, $id)
     {
@@ -153,24 +153,26 @@ class ConversationController extends Controller
             ]
         ], 201);
     }
-    // En app/Http/Controllers/ConversationController.php
-
+    /**
+     * Inicia una nueva conversación por un anuncio o devuelve el ID de una existente
+     * si ya hubo contacto previo entre el comprador y el vendedor.
+     * @param Request $request
+     * @return JsonResponse
+     */
     public function store(Request $request)
     {
         \Log::info('Datos recibidos en store:', $request->all());
 
-        // Validamos que exista en el request, usando el método get para mayor seguridad
         $listingId = $request->input('listing_id');
 
         if (!$listingId) {
             return response()->json([
                 'success' => false,
                 'message' => 'No se recibió el ID del anuncio',
-                'received' => $request->all() // Esto te ayudará a ver qué nombres de variables llegan
+                'received' => $request->all()
             ], 422);
         }
 
-        // 2. Validación con captura de errores
         $validator = \Validator::make($request->all(), [
             'listing_id' => 'required',
         ]);
@@ -180,7 +182,7 @@ class ConversationController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validación fallida',
-                'errors' => $validator->errors() // Esto se verá en el JSON de respuesta
+                'errors' => $validator->errors()
             ], 422);
         }
         $request->validate([
@@ -191,12 +193,10 @@ class ConversationController extends Controller
         $listing = DB::table('listings')->where('id', $request->listing_id)->first();
         $sellerId = $listing->user_id;
 
-        // 🛡️ Seguridad: No puedes chatear contigo mismo
         if ($buyerId == $sellerId) {
             return response()->json(['success' => false, 'message' => 'No puedes chatear contigo mismo.'], 400);
         }
 
-        // 🔍 Buscar si ya existe una conversación
         $existing = DB::table('conversations')
             ->where('listing_id', $listing->id)
             ->where(function($query) use ($buyerId, $sellerId) {
@@ -208,7 +208,6 @@ class ConversationController extends Controller
             return response()->json(['success' => true, 'data' => ['id' => $existing->id]]);
         }
 
-        // 🆕 Crear una nueva
         $newId = DB::table('conversations')->insertGetId([
             'listing_id' => $listing->id,
             'buyer_id' => $buyerId,

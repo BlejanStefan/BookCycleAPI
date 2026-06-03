@@ -5,8 +5,23 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
-
+/**
+ * Representa un anuncio de libro publicado en la plataforma.
+ *
+ * @property int $id
+ * @property int $book_id
+ * @property int $user_id
+ * @property int $category_id
+ * @property int $municipality_id
+ * @property float $price
+ * @property string $condition
+ * @property string $status
+ * @property string|null $description
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ */
 class Listing extends Model
 {
     protected $fillable = [
